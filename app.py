@@ -1,18 +1,21 @@
 import streamlit as st
-import tensorflow as tf
 import numpy as np
+import tensorflow as tf
+import joblib
 
-# Load the trained model
+# Load model and preprocessing objects
 model = tf.keras.models.load_model("customer_churn_model.keras")
+sc = joblib.load("sc.pkl")
+gender_encoder = joblib.load("gender_encoder.pkl")
+ct = joblib.load("ct.pkl")
 
-st.set_page_config(page_title="Customer Churn Prediction")
+st.set_page_config(page_title="Customer Churn Prediction", page_icon="📊")
 
 st.title("🏦 Customer Churn Prediction")
 
-st.write("Enter the customer details below:")
+st.write("Enter the customer details below to predict whether the customer is likely to leave the bank.")
 
-# Inputs
-credit_score = st.number_input("Credit Score", 300, 900, 600)
+credit_score = st.number_input("Credit Score", min_value=300, max_value=900, value=650)
 
 geography = st.selectbox(
     "Geography",
@@ -24,70 +27,59 @@ gender = st.selectbox(
     ["Female", "Male"]
 )
 
-age = st.number_input("Age", 18, 100, 40)
+age = st.number_input("Age", min_value=18, max_value=100, value=35)
 
-tenure = st.number_input("Tenure", 0, 10, 3)
+tenure = st.number_input("Tenure", min_value=0, max_value=10, value=5)
 
-balance = st.number_input("Balance", 0.0, 300000.0, 60000.0)
+balance = st.number_input("Balance", min_value=0.0, value=50000.0)
 
-num_products = st.number_input(
-    "Number of Products",
-    1,
-    4,
-    2
-)
+num_products = st.number_input("Number of Products", min_value=1, max_value=4, value=1)
 
 has_card = st.selectbox(
-    "Has Credit Card",
-    ["No", "Yes"]
+    "Has Credit Card?",
+    [0, 1]
 )
 
-is_active = st.selectbox(
-    "Is Active Member",
-    ["No", "Yes"]
+active_member = st.selectbox(
+    "Is Active Member?",
+    [0, 1]
 )
 
-salary = st.number_input(
-    "Estimated Salary",
-    0.0,
-    300000.0,
-    50000.0
-)
-
-# Prediction
+salary = st.number_input("Estimated Salary", min_value=0.0, value=50000.0)
 if st.button("Predict"):
 
-    # One-Hot Encoding
-    germany = 1 if geography == "Germany" else 0
-    spain = 1 if geography == "Spain" else 0
+    # Encode gender
+    gender_encoded = gender_encoder.transform([gender])[0]
 
-    # Label Encoding
-    gender = 1 if gender == "Male" else 0
-    has_card = 1 if has_card == "Yes" else 0
-    is_active = 1 if is_active == "Yes" else 0
-
-    # Feature vector
-    features = np.array([[
+    # Create input in the same order used during training
+    input_data = np.array([[
         credit_score,
-        germany,
-        spain,
-        gender,
+        geography,
+        gender_encoded,
         age,
         tenure,
         balance,
         num_products,
         has_card,
-        is_active,
+        active_member,
         salary
-    ]])
+    ]], dtype=object)
 
-    prediction = model.predict(features)
+    # Apply the saved OneHotEncoder
+    input_data = ct.transform(input_data)
+
+    # Scale the input
+    input_data = sc.transform(input_data)
+
+    # Predict
+    prediction = model.predict(input_data)
 
     probability = prediction[0][0]
+        st.subheader("Prediction Result")
 
-    st.write(f"Churn Probability: **{probability:.2f}**")
+    st.write(f"Churn Probability: {probability:.2%}")
 
-    if probability > 0.5:
+    if probability >= 0.5:
         st.error("❌ Customer is likely to leave the bank.")
     else:
         st.success("✅ Customer is likely to stay with the bank.")
